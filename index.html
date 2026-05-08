@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ENADE 2026 — Gerador de Inscrições em Lote · Politécnica UFRJ</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Open+Sans:wght@300;400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --azul:    #1f2d6e;
+    --azul2:   #2e3f9e;
+    --vermelho-logo: #c0272d;
+    --laranja: #ED7D31;
+    --verde:   #1a7a4a;
+    --vermelho:#c0392b;
+    --amarelo: #c8900a;
+    --cinza1:  #f4f5f7;
+    --cinza2:  #e2e4e9;
+    --cinza3:  #8a8f9e;
+    --texto:   #1a1d27;
+    --mono:    'IBM Plex Mono', monospace;
+    --titulo:  'Barlow', sans-serif;
+    --corpo:   'Open Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--corpo);
+    background: var(--cinza1);
+    color: var(--texto);
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--azul);
+    position: relative;
+    overflow: hidden;
+  }
+
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--laranja);
+  }
+  .header-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 16px 24px 16px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+  }
+  .header-left { display: flex; flex-direction: column; gap: 4px; }
+  .header-badge {
+    background: var(--laranja);
+    color: white;
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: 2px;
+    padding: 3px 9px;
+    border-radius: 3px;
+    display: inline-block;
+    width: fit-content;
+    margin-bottom: 2px;
+  }
+  .header-title {
+    color: white;
+    font-family: var(--titulo);
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.3px;
+    line-height: 1.2;
+  }
+  .header-sub {
+    color: rgba(255,255,255,0.5);
+    font-family: var(--corpo);
+    font-size: 11px;
+    font-weight: 300;
+    letter-spacing: 0.4px;
+  }
+  .header-logo {
+    height: 44px;
+    width: auto;
+    flex-shrink: 0;
+    background: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+  }
+
+  /* ── Layout ── */
+  main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 28px 24px 48px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .card {
+    background: white;
+    border-radius: 10px;
+    border: 1px solid var(--cinza2);
+    padding: 22px 24px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  }
+  .card.wide { grid-column: 1 / -1; }
+  .card-title {
+    font-family: var(--titulo);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--azul);
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--cinza2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title .dot {
+    width: 7px; height: 7px;
+    background: var(--vermelho-logo);
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── Form fields ── */
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  label {
+    display: block;
+    font-family: var(--titulo);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--azul);
+    margin-bottom: 5px;
+    letter-spacing: 0.3px;
+  }
+  label .hint {
+    font-weight: 400;
+    font-family: var(--corpo);
+    color: var(--cinza3);
+    font-size: 11px;
+    margin-left: 4px;
+  }
+  input[type="text"] {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1.5px solid var(--cinza2);
+    border-radius: 6px;
+    font-family: var(--corpo);
+    font-size: 14px;
+    color: var(--texto);
+    transition: border-color .15s;
+    background: var(--cinza1);
+  }
+  input[type="text"]:focus {
+    outline: none;
+    border-color: var(--azul2);
+    background: white;
+  }
+  input.mono {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 1px;
+  }
+
+  /* ── File drop zone ── */
+  .drop-zone {
+    border: 2px dashed var(--cinza2);
+    border-radius: 8px;
+    padding: 28px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+    background: var(--cinza1);
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--vermelho-logo);
+    background: #fdf2f2;
+  }
+  .drop-zone input[type="file"] {
+    position: absolute; inset: 0;
+    opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon { font-size: 30px; margin-bottom: 8px; }
+  .drop-text { font-size: 13px; color: var(--cinza3); font-family: var(--corpo); }
+  .drop-text strong { color: var(--vermelho-logo); }
+  .drop-filename {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--verde);
+    margin-top: 8px;
+    font-weight: 600;
+    display: none;
+  }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 22px;
+    border: none;
+    border-radius: 7px;
+    font-family: var(--titulo);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all .15s;
+    letter-spacing: 0.5px;
+  }
+  .btn-primary {
+    background: var(--azul);
+    color: white;
+    width: 100%;
+    justify-content: center;
+    font-size: 14px;
+    padding: 13px;
+    letter-spacing: 0.8px;
+  }
+  .btn-primary:hover { background: var(--azul2); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(31,45,110,0.25); }
+  .btn-primary:disabled { background: var(--cinza2); color: var(--cinza3); cursor: not-allowed; transform: none; box-shadow: none; }
+  .btn-secondary {
+    background: var(--cinza1);
+    color: var(--azul);
+    border: 1.5px solid var(--cinza2);
+    font-size: 12px;
+    padding: 8px 14px;
+  }
+  .btn-secondary:hover { background: var(--cinza2); }
+  .btn-dl {
+    background: var(--verde);
+    color: white;
+    font-size: 13px;
+    font-family: var(--titulo);
+    font-weight: 700;
+  }
+  .btn-dl:hover { background: #155f3a; transform: translateY(-1px); }
+
+  /* ── Stats ── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .stat-box {
+    background: var(--cinza1);
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+    border: 1.5px solid var(--cinza2);
+  }
+  .stat-num {
+    font-family: var(--titulo);
+    font-size: 30px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .stat-label {
+    font-family: var(--titulo);
+    font-size: 9px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--cinza3);
+    font-weight: 700;
+  }
+  .stat-box.ok   .stat-num { color: var(--verde); }
+  .stat-box.warn .stat-num { color: var(--amarelo); }
+  .stat-box.err  .stat-num { color: var(--vermelho); }
+
+  .dl-area { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  /* ── Log ── */
+  .log-toolbar {
+    display: flex; align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .log-filters { display: flex; gap: 6px; }
+  .filter-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1.5px solid var(--cinza2);
+    background: white;
+    cursor: pointer;
+    transition: all .15s;
+    font-weight: 600;
+  }
+  .filter-btn.active-ok    { background: #e8f5ee; border-color: var(--verde);         color: var(--verde); }
+  .filter-btn.active-warn  { background: #fdf6e3; border-color: var(--amarelo);        color: var(--amarelo); }
+  .filter-btn.active-err   { background: #fdecea; border-color: var(--vermelho-logo);  color: var(--vermelho-logo); }
+  .filter-btn.active-info  { background: #e8eef8; border-color: var(--azul2);          color: var(--azul2); }
+
+  #log-container {
+    background: #0d1117;
+    border-radius: 8px;
+    padding: 14px 16px;
+    max-height: 320px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.7;
+    border: 1px solid #1e2332;
+  }
+  .log-empty { color: #444c60; text-align: center; padding: 30px 0; font-size: 13px; }
+  .log-line { display: flex; gap: 10px; align-items: flex-start; }
+  .log-line.hidden { display: none; }
+  .log-ts  { color: #3d4a5e; flex-shrink: 0; font-size: 11px; margin-top: 1px; }
+  .log-msg { flex: 1; word-break: break-word; }
+  .log-info  .log-msg { color: #8b9bbf; }
+  .log-ok    .log-msg { color: #4fc37a; }
+  .log-warn  .log-msg { color: #f0b060; }
+  .log-error .log-msg { color: #f07070; }
+  .log-sep   .log-msg { color: #2a3347; user-select: none; }
+  .log-head  .log-msg { color: #6b90c8; font-weight: 600; }
+
+  .progress-wrap {
+    height: 4px; background: var(--cinza2);
+    border-radius: 2px; margin-bottom: 12px;
+    overflow: hidden; display: none;
+  }
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--azul), var(--vermelho-logo));
+    border-radius: 2px; transition: width .3s; width: 0%;
+  }
+
+  #log-container::-webkit-scrollbar { width: 6px; }
+  #log-container::-webkit-scrollbar-track { background: #0d1117; }
+  #log-container::-webkit-scrollbar-thumb { background: #2a3347; border-radius: 3px; }
+
+  @media (max-width: 640px) {
+    main { grid-template-columns: 1fr; padding: 16px 12px 32px; }
+    .card.wide { grid-column: 1; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .header-inner { padding: 14px 20px 14px 28px; }
+    .header-title { font-size: 16px; }
+    .header-logo { height: 40px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="header-left">
+      <div class="header-badge">ENADE 2026</div>
+      <div class="header-title">Gerador de Inscrições em Lote</div>
+      <div class="header-sub">Escola Politécnica · UFRJ</div>
+    </div>
+    <img class="header-logo" src="https://www.poli.ufrj.br/wp-content/uploads/2021/03/politecnica-ufrj.png" alt="Politécnica UFRJ">
+  </div>
+</header>
+
+<main>
+
+  <div class="card">
+    <div class="card-title"><span class="dot"></span>Planilha de Alunos</div>
+    <div class="drop-zone" id="drop-zone">
+      <input type="file" id="file-input" accept=".xlsx,.xlsm">
+      <div class="drop-icon">📊</div>
+      <div class="drop-text">
+        <strong>Clique para selecionar</strong> ou arraste aqui<br>
+        Formatos aceitos: <code>.xlsx</code> &middot; <code>.xlsm</code>
+      </div>
+      <div class="drop-filename" id="drop-filename"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="dot"></span>Parâmetros</div>
+    <div class="field">
+      <label>Código e-MEC do Curso <span class="hint">(não é o código SIGA)</span></label>
+      <input type="text" id="co-curso" class="mono" value="14351" maxlength="20" placeholder="ex: 14351">
+    </div>
+    <div class="field">
+      <label>Data de Geração <span class="hint">(DDMMAAAA)</span></label>
+      <input type="text" id="data-geracao" class="mono" maxlength="8" placeholder="ex: 08052026">
+    </div>
+    <div class="field" style="margin-top:18px">
+      <button class="btn btn-primary" id="btn-gerar" disabled>
+        ▶ &nbsp;Processar e Gerar Arquivos
+      </button>
+    </div>
+  </div>
+
+  <div class="card wide" id="card-resumo" style="display:none">
+    <div class="card-title"><span class="dot"></span>Resumo do Processamento</div>
+    <div class="progress-wrap" id="progress-wrap">
+      <div class="progress-bar" id="progress-bar"></div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-box ok">
+        <div class="stat-num" id="stat-ing">—</div>
+        <div class="stat-label">Ingressantes (N92)</div>
+      </div>
+      <div class="stat-box ok">
+        <div class="stat-num" id="stat-con">—</div>
+        <div class="stat-label">Concluintes (N99)</div>
+      </div>
+      <div class="stat-box warn">
+        <div class="stat-num" id="stat-prob">—</div>
+        <div class="stat-label">Pendências</div>
+      </div>
+    </div>
+    <div class="dl-area" id="dl-area"></div>
+  </div>
+
+  <div class="card wide">
+    <div class="card-title"><span class="dot"></span>Log de Processamento</div>
+    <div class="log-toolbar">
+      <div class="log-filters">
+        <button class="filter-btn" onclick="toggleFilter(event,'all')">Todos</button>
+        <button class="filter-btn" onclick="toggleFilter(event,'ok')">✓ OK</button>
+        <button class="filter-btn" onclick="toggleFilter(event,'warn')">⚠ Avisos</button>
+        <button class="filter-btn" onclick="toggleFilter(event,'error')">✖ Erros</button>
+      </div>
+      <button class="btn btn-secondary" onclick="exportarLog()">⬇ Exportar Log</button>
+    </div>
+    <div id="log-container">
+      <div class="log-empty" id="log-empty">O log aparecerá aqui após o processamento.</div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+let workbook = null, logLines = [], resultN92 = null, resultN99 = null, currentFilter = 'all';
+
+const CO_PROJETO = '2611101', TP_ORIGEM = 'E', CO_IES = '586';
+const HEADER_N92 = 'CO_PROJETO;TP_ORIGEM;CO_IES;CO_CURSO;NU_CPF;NU_ANO_FIM_ENSINO_MEDIO;CO_TURNO_GRADUACAO;NU_PERCENTUAL_INTEGRALIZACAO;NU_ANO_INICIO_GRADUACAO;NU_SEMESTRE_INICIO_GRADUACAO';
+const HEADER_N99 = 'CO_PROJETO;TP_ORIGEM;CO_IES;CO_CURSO;NU_CPF;NU_ANO_FIM_ENSINO_MEDIO;CO_TURNO_GRADUACAO;NU_PERCENTUAL_INTEGRALIZACAO;NU_ANO_FORMATURA;NU_SEMESTRE_FORMATURA;NU_ANO_INICIO_GRADUACAO;IN_MUNICIPIO_POLO_EXTERIOR';
+const TURNO_MAP = { 'matutino':1, 'vespertino':2, 'integral':3, 'noturno':4 };
+
+// Drop zone
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+
+function handleFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['xlsx','xlsm'].includes(ext)) { alert('Formato inválido. Use .xlsx ou .xlsm'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    workbook = XLSX.read(e.target.result, { type: 'array' });
+    const fn = document.getElementById('drop-filename');
+    fn.textContent = '✓ ' + file.name; fn.style.display = 'block';
+    document.querySelector('.drop-icon').textContent = '✅';
+    document.getElementById('btn-gerar').disabled = false;
+    preencherDataHoje();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function preencherDataHoje() {
+  const d = new Date(), dd = String(d.getDate()).padStart(2,'0'),
+        mm = String(d.getMonth()+1).padStart(2,'0'), aa = d.getFullYear();
+  const c = document.getElementById('data-geracao');
+  if (!c.value) c.value = `${dd}${mm}${aa}`;
+}
+
+function log(msg, tipo='info') {
+  logLines.push({ msg, tipo });
+  const now = new Date();
+  const ts = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
+  const container = document.getElementById('log-container');
+  document.getElementById('log-empty').style.display = 'none';
+  const div = document.createElement('div');
+  div.className = `log-line log-${tipo}`; div.dataset.tipo = tipo;
+  if (currentFilter !== 'all' && tipo !== currentFilter && tipo !== 'sep' && tipo !== 'head') div.classList.add('hidden');
+  div.innerHTML = `<span class="log-ts">${ts}</span><span class="log-msg">${msg}</span>`;
+  container.appendChild(div); container.scrollTop = container.scrollHeight;
+}
+function logSep() { log('─'.repeat(60), 'sep'); }
+function clearLog() {
+  logLines = [];
+  const c = document.getElementById('log-container');
+  c.innerHTML = '<div class="log-empty" id="log-empty">O log aparecerá aqui após o processamento.</div>';
+}
+function toggleFilter(evt, f) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.className = 'filter-btn');
+  if (f==='ok')   evt.target.classList.add('active-ok');
+  if (f==='warn') evt.target.classList.add('active-warn');
+  if (f==='error') evt.target.classList.add('active-err');
+  if (f==='info') evt.target.classList.add('active-info');
+  document.querySelectorAll('.log-line').forEach(el => {
+    const t = el.dataset.tipo;
+    (f==='all'||t===f||t==='sep'||t==='head') ? el.classList.remove('hidden') : el.classList.add('hidden');
+  });
+}
+function exportarLog() {
+  const texto = logLines.map(l => `[${l.tipo.toUpperCase().padEnd(5)}] ${l.msg}`).join('\n');
+  const blob = new Blob([texto],{type:'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url;
+  a.download = `ENADE2026_log_${document.getElementById('data-geracao').value||'log'}.txt`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+function cleanCpf(raw) { return raw==null?'':(String(raw).trim().replace(/[.\-\s]/g,'')); }
+function validCpf(s) { return /^\d{11}$/.test(s); }
+function toIntStr(val) {
+  if (val==null||String(val).trim()==='') return null;
+  const n=parseFloat(String(val)); return isNaN(n)?null:String(Math.round(n));
+}
+function fmtPct(val) {
+  if (val==null||String(val).trim()==='') return '0.0';
+  const n=parseFloat(String(val).replace(',','.')); return isNaN(n)?'0.0':n.toFixed(1);
+}
+function calcFormatura(anoIng, semIng) {
+  const af=parseInt(anoIng)+5, sf=parseInt(semIng);
+  return (af<2026||(af===2026&&sf<2)) ? ['2026','2'] : [String(af),String(sf)];
+}
+function getTurno(raw) { return raw?String(TURNO_MAP[String(raw).trim().toLowerCase()]||3):'3'; }
+function setProgress(pct) { document.getElementById('progress-bar').style.width=pct+'%'; }
+
+function processar() {
+  clearLog(); resultN92=null; resultN99=null;
+  document.getElementById('dl-area').innerHTML='';
+  document.getElementById('card-resumo').style.display='block';
+  document.getElementById('progress-wrap').style.display='block';
+  setProgress(5);
+
+  const coCurso=document.getElementById('co-curso').value.trim();
+  const dataGer=document.getElementById('data-geracao').value.trim();
+
+  if (!workbook) { log('Nenhuma planilha carregada.','error'); return; }
+  if (!/^\d+$/.test(coCurso)) { log('Código e-MEC deve conter apenas números.','error'); return; }
+  if (!/^\d{8}$/.test(dataGer)) { log('Data deve estar no formato DDMMAAAA com 8 dígitos.','error'); return; }
+
+  log(`Planilha carregada. Abas: ${workbook.SheetNames.join(', ')}`,'info');
+  log(`Código e-MEC: ${coCurso}  |  Data de geração: ${dataGer}`,'info');
+  logSep();
+
+  const names=workbook.SheetNames;
+  const abasIng=names.filter(n=>n.toUpperCase().includes('INGRESSANTE'));
+  const absCon =names.filter(n=>n.toUpperCase().includes('CONCLUINTE'));
+  let ingressantes=[],concluintes=[],totalExcluidos=0,totalAvisos=0;
+
+  // Mapeia cabeçalhos para índices de coluna de forma dinâmica
+  function mapearColunas(headerRow) {
+    const map = {};
+    const aliases = {
+      cpf:       ['cpf'],
+      nome:      ['nome'],
+      anoEm:     ['ano conclusão em', 'ano conclusao em', 'ano fim ensino medio', 'ano_conclusao'],
+      turno:     ['turno'],
+      polo:      ['polo'],
+      municipio: ['município polo', 'municipio polo'],
+      pct:       ['percentual ch', 'percentual', 'ch'],
+      anoIng:    ['ano ingresso', 'ano_ingresso'],
+      semIng:    ['período ingresso', 'periodo ingresso', 'semestre ingresso'],
+      emec:      ['código emec', 'codigo emec', 'co_curso'],
+      obs:       ['observação', 'observacao', 'obs']
+    };
+    headerRow.forEach((cell, idx) => {
+      if (cell == null) return;
+      const lower = String(cell).toLowerCase().trim();
+      for (const [key, patterns] of Object.entries(aliases)) {
+        if (patterns.some(p => lower.includes(p))) {
+          if (!(key in map)) map[key] = idx;
+        }
+      }
+    });
+    return map;
+  }
+
+  function lerAba(aba) {
+    const ws = workbook.Sheets[aba];
+    const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
+    let cabIdx = -1;
+    for (let i = 0; i < Math.min(rows.length, 6); i++) {
+      if (rows[i] && rows[i].some(c => c && String(c).toLowerCase().includes('cpf'))) {
+        cabIdx = i; break;
+      }
+    }
+    if (cabIdx === -1) return { cols: {}, dataRows: [] };
+    const cols = mapearColunas(rows[cabIdx]);
+    const dataRows = rows.slice(cabIdx + 1).filter(r => r && r.some(c => c != null));
+    return { cols, dataRows };
+  }
+
+  // Ingressantes
+  if (abasIng.length > 0) {
+    log(`Abas de ingressantes: ${abasIng.join(', ')}`, 'head'); setProgress(20);
+    for (const aba of abasIng) {
+      const { cols, dataRows } = lerAba(aba);
+      if (!Object.keys(cols).length) { log(`⚠ Cabeçalho não encontrado na aba "${aba}". Pulando.`, 'warn'); continue; }
+      log(`  Colunas detectadas em "${aba}": CPF→${cols.cpf ?? '?'}  Nome→${cols.nome ?? '?'}  AnoEM→${cols.anoEm ?? '?'}  AnoIng→${cols.anoIng ?? '?'}  SemIng→${cols.semIng ?? '?'}`, 'info');
+      for (const r of dataRows) {
+        const nome = cols.nome != null ? (r[cols.nome] ? String(r[cols.nome]) : '(sem nome)') : '(sem nome)';
+        if (cols.cpf == null) { log('Coluna CPF não encontrada. Verifique o cabeçalho da planilha.', 'error'); break; }
+        const cpf = cleanCpf(r[cols.cpf]);
+        if (!validCpf(cpf)) { log(`EXCLUÍDO [ING] ${nome} — CPF inválido: "${r[cols.cpf]}"`, 'error'); totalExcluidos++; continue; }
+        const anoEm  = cols.anoEm  != null ? toIntStr(r[cols.anoEm])  : null;
+        const turno  = cols.turno  != null ? getTurno(r[cols.turno])  : '3';
+        const pct    = cols.pct    != null ? fmtPct(r[cols.pct])      : '0.0';
+        const anoIng = cols.anoIng != null ? toIntStr(r[cols.anoIng]) : null;
+        const semIng = cols.semIng != null ? toIntStr(r[cols.semIng]) : null;
+        if (!anoEm)         { log(`⚠ AVISO [ING] ${nome} — Ano Conclusão EM ausente (????). Corrigir antes do upload.`, 'warn'); totalAvisos++; }
+        if (!anoIng||!semIng) { log(`⚠ AVISO [ING] ${nome} — Ano/Semestre de ingresso ausente.`, 'warn'); totalAvisos++; }
+        ingressantes.push([nome.toUpperCase(),
+          [CO_PROJETO,TP_ORIGEM,CO_IES,coCurso,cpf,anoEm||'????',turno,pct,anoIng||'????',semIng||'?'].join(';')]);
+      }
+    }
+    ingressantes.sort((a,b) => a[0].localeCompare(b[0]));
+    log(`✓ ${ingressantes.length} ingressantes processados.`, 'ok');
+  } else { log('Nenhuma aba de ingressantes encontrada (nome deve conter "INGRESSANTE").', 'info'); }
+
+  logSep();
+
+  // Concluintes
+  if (absCon.length > 0) {
+    log(`Abas de concluintes: ${absCon.join(', ')}`, 'head'); setProgress(50);
+    for (const aba of absCon) {
+      const { cols, dataRows } = lerAba(aba);
+      if (!Object.keys(cols).length) { log(`⚠ Cabeçalho não encontrado na aba "${aba}". Pulando.`, 'warn'); continue; }
+      log(`  Colunas detectadas em "${aba}": CPF→${cols.cpf ?? '?'}  Nome→${cols.nome ?? '?'}  AnoEM→${cols.anoEm ?? '?'}  AnoIng→${cols.anoIng ?? '?'}  SemIng→${cols.semIng ?? '?'}`, 'info');
+      for (const r of dataRows) {
+        const nome = cols.nome != null ? (r[cols.nome] ? String(r[cols.nome]) : '(sem nome)') : '(sem nome)';
+        // Observação de colação — coluna "obs" se existir, ou última coluna não mapeada
+        const obsVal = cols.obs != null ? r[cols.obs] : null;
+        if (obsVal != null && typeof obsVal === 'string' && obsVal.trim() !== '') {
+          log(`EXCLUÍDO [CON] ${nome} — ${obsVal}`, 'error'); totalExcluidos++; continue;
+        }
+        if (cols.cpf == null) { log('Coluna CPF não encontrada. Verifique o cabeçalho da planilha.', 'error'); break; }
+        const cpf = cleanCpf(r[cols.cpf]);
+        if (!validCpf(cpf)) { log(`EXCLUÍDO [CON] ${nome} — CPF inválido: "${r[cols.cpf]}"`, 'error'); totalExcluidos++; continue; }
+        const anoEm  = cols.anoEm  != null ? toIntStr(r[cols.anoEm])  : null;
+        const turno  = cols.turno  != null ? getTurno(r[cols.turno])  : '3';
+        const pct    = cols.pct    != null ? fmtPct(r[cols.pct])      : '0.0';
+        const anoIng = cols.anoIng != null ? toIntStr(r[cols.anoIng]) : null;
+        const semIng = cols.semIng != null ? toIntStr(r[cols.semIng]) : null;
+        const [anoF, semF] = (anoIng && semIng) ? calcFormatura(anoIng, semIng) : ['????', '?'];
+        if (!anoEm)           { log(`⚠ AVISO [CON] ${nome} — Ano Conclusão EM ausente (????). Corrigir antes do upload.`, 'warn'); totalAvisos++; }
+        if (!anoIng||!semIng) { log(`⚠ AVISO [CON] ${nome} — Ano/Semestre de ingresso ausente.`, 'warn'); totalAvisos++; }
+        if (anoF !== '????') log(`  → ${nome}: ingresso ${anoIng}/${semIng} → formatura estimada ${anoF}/${semF}`, 'info');
+        concluintes.push([nome.toUpperCase(),
+          [CO_PROJETO,TP_ORIGEM,CO_IES,coCurso,cpf,anoEm||'????',turno,pct,anoF,semF,anoIng||'????','0'].join(';')]);
+      }
+    }
+    concluintes.sort((a,b) => a[0].localeCompare(b[0]));
+    log(`✓ ${concluintes.length} concluintes processados.`, 'ok');
+  } else { log('Nenhuma aba de concluintes encontrada (nome deve conter "CONCLUINTE").', 'info'); }
+
+  setProgress(80); logSep();
+
+  const dlArea=document.getElementById('dl-area');
+
+  if (ingressantes.length>0) {
+    const fname=`ENADE2611101_N92_BR_${dataGer}_${coCurso}_E001.TXT`;
+    const conteudo=HEADER_N92+'\n'+ingressantes.map(r=>r[1]).join('\n')+'\n';
+    const btn=document.createElement('button'); btn.className='btn btn-dl';
+    btn.textContent=`⬇  Baixar ${fname.replace('.TXT','.zip')}`;
+    btn.onclick=()=>baixarZip(fname,conteudo); dlArea.appendChild(btn);
+    log(`✓ Arquivo N92 pronto: ${fname}`,'ok');
+  }
+  if (concluintes.length>0) {
+    const fname=`ENADE2611101_N99_BR_${dataGer}_${coCurso}_E001.TXT`;
+    const conteudo=HEADER_N99+'\n'+concluintes.map(r=>r[1]).join('\n')+'\n';
+    const btn=document.createElement('button'); btn.className='btn btn-dl';
+    btn.textContent=`⬇  Baixar ${fname.replace('.TXT','.zip')}`;
+    btn.onclick=()=>baixarZip(fname,conteudo); dlArea.appendChild(btn);
+    log(`✓ Arquivo N99 pronto: ${fname}`,'ok');
+  }
+
+  document.getElementById('stat-ing').textContent=ingressantes.length;
+  document.getElementById('stat-con').textContent=concluintes.length;
+  document.getElementById('stat-prob').textContent=totalExcluidos+totalAvisos;
+  const sp=document.querySelector('.stat-box.warn');
+  if (totalExcluidos>0){sp.classList.remove('warn');sp.classList.add('err');}
+
+  setProgress(100); logSep();
+  if (totalExcluidos>0) log(`⚠ ${totalExcluidos} registro(s) EXCLUÍDO(S) dos arquivos — verifique os erros acima.`,'warn');
+  if (totalAvisos>0)    log(`⚠ ${totalAvisos} campo(s) com ???? — corrigir na planilha antes do upload.`,'warn');
+  if (!totalExcluidos&&!totalAvisos) log('✓ Nenhuma inconsistência encontrada. Arquivos prontos para upload.','ok');
+  setTimeout(()=>{ document.getElementById('progress-wrap').style.display='none'; },800);
+}
+
+async function baixarZip(fname, conteudo) {
+  const zip=new JSZip(); zip.file(fname,conteudo);
+  const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=fname.replace('.TXT','.zip'); a.click();
+  URL.revokeObjectURL(url);
+  log(`Download iniciado: ${fname.replace('.TXT','.zip')}`,'ok');
+}
+
+document.getElementById('btn-gerar').addEventListener('click', processar);
+preencherDataHoje();
+</script>
+</body>
+</html>
