@@ -372,15 +372,23 @@
 <main>
 
   <div class="card">
-    <div class="card-title"><span class="dot"></span>Planilha de Alunos</div>
-    <div class="drop-zone" id="drop-zone">
-      <input type="file" id="file-input" accept=".xlsx,.xlsm">
-      <div class="drop-icon">📊</div>
-      <div class="drop-text">
-        <strong>Clique para selecionar</strong> ou arraste aqui<br>
-        Formatos aceitos: <code>.xlsx</code> &middot; <code>.xlsm</code>
+    <div class="card-title"><span class="dot"></span>Planilhas de Alunos</div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div class="drop-zone" id="drop-zone-1">
+        <input type="file" id="file-input-1" accept=".xlsx,.xlsm">
+        <div class="drop-icon" id="icon-1">📊</div>
+        <div class="drop-text"><strong>Arquivo 1</strong> — clique ou arraste<br><span style="font-size:11px">ingressantes, concluintes ou ambos</span></div>
+        <div class="drop-filename" id="drop-filename-1"></div>
       </div>
-      <div class="drop-filename" id="drop-filename"></div>
+      <div class="drop-zone" id="drop-zone-2">
+        <input type="file" id="file-input-2" accept=".xlsx,.xlsm">
+        <div class="drop-icon" id="icon-2">📊</div>
+        <div class="drop-text"><strong>Arquivo 2</strong> <span style="color:var(--cinza3)">(opcional)</span> — clique ou arraste<br><span style="font-size:11px">se houver planilha separada</span></div>
+        <div class="drop-filename" id="drop-filename-2"></div>
+      </div>
+    </div>
+    <div style="margin-top:10px;padding:8px 10px;background:var(--cinza1);border-radius:6px;border:1px solid var(--cinza2);">
+      <span style="font-family:var(--mono);font-size:10px;color:var(--cinza3);letter-spacing:.5px;">CLASSIFICAÇÃO POR % CH &nbsp;·&nbsp; ≤ 25% → N92 ingressante &nbsp;·&nbsp; ≥ 80% → N99 concluinte</span>
     </div>
   </div>
 
@@ -449,23 +457,28 @@ const HEADER_N92 = 'CO_PROJETO;TP_ORIGEM;CO_IES;CO_CURSO;NU_CPF;NU_ANO_FIM_ENSIN
 const HEADER_N99 = 'CO_PROJETO;TP_ORIGEM;CO_IES;CO_CURSO;NU_CPF;NU_ANO_FIM_ENSINO_MEDIO;CO_TURNO_GRADUACAO;NU_PERCENTUAL_INTEGRALIZACAO;NU_ANO_FORMATURA;NU_SEMESTRE_FORMATURA;NU_ANO_INICIO_GRADUACAO;IN_MUNICIPIO_POLO_EXTERIOR';
 const TURNO_MAP = { 'matutino':1, 'vespertino':2, 'integral':3, 'noturno':4 };
 
-// Drop zone
-const dropZone = document.getElementById('drop-zone');
-const fileInput = document.getElementById('file-input');
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
-fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+// Drop zones (2 arquivos)
+let workbooks = [null, null];
 
-function handleFile(file) {
+function setupDropZone(n) {
+  const zone  = document.getElementById('drop-zone-' + n);
+  const input = document.getElementById('file-input-' + n);
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0], n); });
+  input.addEventListener('change', () => { if (input.files[0]) handleFile(input.files[0], n); });
+}
+setupDropZone(1); setupDropZone(2);
+
+function handleFile(file, n) {
   const ext = file.name.split('.').pop().toLowerCase();
   if (!['xlsx','xlsm'].includes(ext)) { alert('Formato inválido. Use .xlsx ou .xlsm'); return; }
   const reader = new FileReader();
   reader.onload = e => {
-    workbook = XLSX.read(e.target.result, { type: 'array' });
-    const fn = document.getElementById('drop-filename');
-    fn.textContent = '✓ ' + file.name; fn.style.display = 'block';
-    document.querySelector('.drop-icon').textContent = '✅';
+    workbooks[n-1] = XLSX.read(e.target.result, { type: 'array' });
+    document.getElementById('drop-filename-' + n).textContent = '✓ ' + file.name;
+    document.getElementById('drop-filename-' + n).style.display = 'block';
+    document.getElementById('icon-' + n).textContent = '✅';
     document.getElementById('btn-gerar').disabled = false;
     preencherDataHoje();
   };
@@ -586,8 +599,8 @@ function processar() {
     return map;
   }
 
-  function lerAba(aba) {
-    const ws = workbook.Sheets[aba];
+  function lerAbaWb(wb, aba) {
+    const ws = wb.Sheets[aba];
     const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
     let cabIdx = -1;
     for (let i = 0; i < Math.min(rows.length, 6); i++) {
@@ -601,68 +614,102 @@ function processar() {
     return { cols, dataRows };
   }
 
-  // Ingressantes
-  if (abasIng.length > 0) {
-    log(`Abas de ingressantes: ${abasIng.join(', ')}`, 'head'); setProgress(20);
-    for (const aba of abasIng) {
-      const { cols, dataRows } = lerAba(aba);
-      if (!Object.keys(cols).length) { log(`⚠ Cabeçalho não encontrado na aba "${aba}". Pulando.`, 'warn'); continue; }
-      log(`  Colunas detectadas em "${aba}": CPF→${cols.cpf ?? '?'}  Nome→${cols.nome ?? '?'}  AnoEM→${cols.anoEm ?? '?'}  AnoIng→${cols.anoIng ?? '?'}  SemIng→${cols.semIng ?? '?'}`, 'info');
-      for (const r of dataRows) {
-        const nome = cols.nome != null ? (r[cols.nome] ? String(r[cols.nome]) : '(sem nome)') : '(sem nome)';
-        if (cols.cpf == null) { log('Coluna CPF não encontrada. Verifique o cabeçalho da planilha.', 'error'); break; }
-        const cpf = cleanCpf(r[cols.cpf]);
-        if (!validCpf(cpf)) { log(`EXCLUÍDO [ING] ${nome} — CPF inválido: "${r[cols.cpf]}"`, 'error'); totalExcluidos++; continue; }
-        const anoEm  = cols.anoEm  != null ? toIntStr(r[cols.anoEm])  : null;
-        const turno  = cols.turno  != null ? getTurno(r[cols.turno])  : '3';
-        const pct    = cols.pct    != null ? fmtPct(r[cols.pct])      : '0.0';
-        const anoIng = cols.anoIng != null ? toIntStr(r[cols.anoIng]) : null;
-        const semIng = cols.semIng != null ? toIntStr(r[cols.semIng]) : null;
-        if (!anoEm)         { log(`⚠ AVISO [ING] ${nome} — Ano Conclusão EM ausente (????). Corrigir antes do upload.`, 'warn'); totalAvisos++; }
-        if (!anoIng||!semIng) { log(`⚠ AVISO [ING] ${nome} — Ano/Semestre de ingresso ausente.`, 'warn'); totalAvisos++; }
+  // Processa todas as abas de todos os arquivos, classifica por % CH
+  setProgress(20);
+  const cpfVisto = {};          // cpf → {nome, tipo, arquivo}
+  const statsArquivo = [        // contadores por arquivo [0] e [1]
+    {ing:0, con:0, label:'Arquivo 1'},
+    {ing:0, con:0, label:'Arquivo 2'}
+  ];
+  const arquivoIdx = new Map(); // wb → índice 0 ou 1
+  workbooks.forEach((wb,i) => { if (wb) arquivoIdx.set(wb, i); });
+
+  for (const { wb, name } of todasAbas) {
+    const arqIdx = arquivoIdx.get(wb) ?? 0;
+    const { cols, dataRows } = lerAbaWb(wb, name);
+    if (!Object.keys(cols).length) { log(`⚠ Cabeçalho não encontrado na aba "${name}". Pulando.`, 'warn'); continue; }
+    if (cols.cpf == null) { log(`⚠ Coluna CPF não encontrada na aba "${name}". Pulando.`, 'warn'); continue; }
+    log(`Processando aba "${name}": CPF→${cols.cpf ?? '?'}  Nome→${cols.nome ?? '?'}  %CH→${cols.pct ?? '?'}  AnoEM→${cols.anoEm ?? '?'}  AnoIng→${cols.anoIng ?? '?'}  SemIng→${cols.semIng ?? '?'}`, 'info');
+
+    for (const r of dataRows) {
+      const nome = cols.nome != null && r[cols.nome] ? String(r[cols.nome]) : '(sem nome)';
+
+      // Observação de colação
+      const obsVal = cols.obs != null ? r[cols.obs] : null;
+      if (obsVal != null && typeof obsVal === 'string' && obsVal.trim() !== '') {
+        log(`EXCLUÍDO ${nome} — ${obsVal}`, 'error'); totalExcluidos++; continue;
+      }
+
+      const cpf = cleanCpf(r[cols.cpf]);
+      if (!validCpf(cpf)) { log(`EXCLUÍDO ${nome} — CPF inválido: "${r[cols.cpf]}"`, 'error'); totalExcluidos++; continue; }
+
+      const anoEm  = cols.anoEm  != null ? toIntStr(r[cols.anoEm])  : null;
+      const turno  = cols.turno  != null ? getTurno(r[cols.turno])  : '3';
+      const pctRaw = cols.pct    != null ? parseFloat(String(r[cols.pct]).replace(',','.')) : 0;
+      const pct    = isNaN(pctRaw) ? 0 : pctRaw;
+      const pctFmt = pct.toFixed(1);
+      const anoIng = cols.anoIng != null ? toIntStr(r[cols.anoIng]) : null;
+      const semIng = cols.semIng != null ? toIntStr(r[cols.semIng]) : null;
+
+      if (!anoEm)           { log(`⚠ AVISO ${nome} — Ano Conclusão EM ausente (????). Corrigir antes do upload.`, 'warn'); totalAvisos++; }
+      if (!anoIng||!semIng) { log(`⚠ AVISO ${nome} — Ano/Semestre de ingresso ausente.`, 'warn'); totalAvisos++; }
+
+      // ── Classificação por % CH (critério do edital) ──────────────
+      if (pct <= 25) {
+        // Ingressante (N92)
+        if (cpfVisto[cpf]) {
+          log(`⚠ CPF DUPLICADO ${nome} — CPF ${cpf} já registrado como ${cpfVisto[cpf].tipo} (${cpfVisto[cpf].nome} / ${cpfVisto[cpf].arquivo}). Segundo registro ignorado.`, 'error');
+          totalExcluidos++; continue;
+        }
+        cpfVisto[cpf] = { nome, tipo:'ingressante', arquivo: statsArquivo[arqIdx].label };
+        statsArquivo[arqIdx].ing++;
         ingressantes.push([nome.toUpperCase(),
-          [CO_PROJETO,TP_ORIGEM,CO_IES,coCurso,cpf,anoEm||'????',turno,pct,anoIng||'????',semIng||'?'].join(';')]);
+          [CO_PROJETO,TP_ORIGEM,CO_IES,coCurso,cpf,anoEm||'????',turno,pctFmt,anoIng||'????',semIng||'?'].join(';')]);
+        log(`  [N92] ${nome} — ${pctFmt}% CH → ingressante`, 'info');
+
+      } else if (pct >= 80) {
+        // Concluinte (N99)
+        const [anoF, semF] = (anoIng && semIng) ? calcFormatura(anoIng, semIng) : ['????','?'];
+        if (cpfVisto[cpf]) {
+          log(`⚠ CPF DUPLICADO ${nome} — CPF ${cpf} já registrado como ${cpfVisto[cpf].tipo} (${cpfVisto[cpf].nome} / ${cpfVisto[cpf].arquivo}). Segundo registro ignorado.`, 'error');
+          totalExcluidos++; continue;
+        }
+        cpfVisto[cpf] = { nome, tipo:'concluinte', arquivo: statsArquivo[arqIdx].label };
+        statsArquivo[arqIdx].con++;
+        concluintes.push([nome.toUpperCase(),
+          [CO_PROJETO,TP_ORIGEM,CO_IES,coCurso,cpf,anoEm||'????',turno,pctFmt,anoF,semF,anoIng||'????','0'].join(';')]);
+        log(`  [N99] ${nome} — ${pctFmt}% CH → concluinte (formatura estimada ${anoF}/${semF})`, 'info');
+
+      } else {
+        // Faixa intermediária — inelegível pelo edital
+        log(`⚠ INELEGÍVEL ${nome} — ${pctFmt}% CH (fora das faixas ≤25% ou ≥80%)`, 'warn');
+        inelegiveis++; totalAvisos++;
       }
     }
-    ingressantes.sort((a,b) => a[0].localeCompare(b[0]));
-    log(`✓ ${ingressantes.length} ingressantes processados.`, 'ok');
-  } else { log('Nenhuma aba de ingressantes encontrada (nome deve conter "INGRESSANTE").', 'info'); }
+  }
 
+  ingressantes.sort((a,b) => a[0].localeCompare(b[0]));
+  concluintes.sort((a,b)  => a[0].localeCompare(b[0]));
   logSep();
 
-  // Concluintes
-  if (absCon.length > 0) {
-    log(`Abas de concluintes: ${absCon.join(', ')}`, 'head'); setProgress(50);
-    for (const aba of absCon) {
-      const { cols, dataRows } = lerAba(aba);
-      if (!Object.keys(cols).length) { log(`⚠ Cabeçalho não encontrado na aba "${aba}". Pulando.`, 'warn'); continue; }
-      log(`  Colunas detectadas em "${aba}": CPF→${cols.cpf ?? '?'}  Nome→${cols.nome ?? '?'}  AnoEM→${cols.anoEm ?? '?'}  AnoIng→${cols.anoIng ?? '?'}  SemIng→${cols.semIng ?? '?'}`, 'info');
-      for (const r of dataRows) {
-        const nome = cols.nome != null ? (r[cols.nome] ? String(r[cols.nome]) : '(sem nome)') : '(sem nome)';
-        // Observação de colação — coluna "obs" se existir, ou última coluna não mapeada
-        const obsVal = cols.obs != null ? r[cols.obs] : null;
-        if (obsVal != null && typeof obsVal === 'string' && obsVal.trim() !== '') {
-          log(`EXCLUÍDO [CON] ${nome} — ${obsVal}`, 'error'); totalExcluidos++; continue;
-        }
-        if (cols.cpf == null) { log('Coluna CPF não encontrada. Verifique o cabeçalho da planilha.', 'error'); break; }
-        const cpf = cleanCpf(r[cols.cpf]);
-        if (!validCpf(cpf)) { log(`EXCLUÍDO [CON] ${nome} — CPF inválido: "${r[cols.cpf]}"`, 'error'); totalExcluidos++; continue; }
-        const anoEm  = cols.anoEm  != null ? toIntStr(r[cols.anoEm])  : null;
-        const turno  = cols.turno  != null ? getTurno(r[cols.turno])  : '3';
-        const pct    = cols.pct    != null ? fmtPct(r[cols.pct])      : '0.0';
-        const anoIng = cols.anoIng != null ? toIntStr(r[cols.anoIng]) : null;
-        const semIng = cols.semIng != null ? toIntStr(r[cols.semIng]) : null;
-        const [anoF, semF] = (anoIng && semIng) ? calcFormatura(anoIng, semIng) : ['????', '?'];
-        if (!anoEm)           { log(`⚠ AVISO [CON] ${nome} — Ano Conclusão EM ausente (????). Corrigir antes do upload.`, 'warn'); totalAvisos++; }
-        if (!anoIng||!semIng) { log(`⚠ AVISO [CON] ${nome} — Ano/Semestre de ingresso ausente.`, 'warn'); totalAvisos++; }
-        if (anoF !== '????') log(`  → ${nome}: ingresso ${anoIng}/${semIng} → formatura estimada ${anoF}/${semF}`, 'info');
-        concluintes.push([nome.toUpperCase(),
-          [CO_PROJETO,TP_ORIGEM,CO_IES,coCurso,cpf,anoEm||'????',turno,pct,anoF,semF,anoIng||'????','0'].join(';')]);
-      }
-    }
-    concluintes.sort((a,b) => a[0].localeCompare(b[0]));
-    log(`✓ ${concluintes.length} concluintes processados.`, 'ok');
-  } else { log('Nenhuma aba de concluintes encontrada (nome deve conter "CONCLUINTE").', 'info'); }
+  // ── Aviso de arquivo duplicado (dois do mesmo tipo) ───────────────
+  const ambosCarregados = workbooks[0] && workbooks[1];
+  if (ambosCarregados) {
+    const s0 = statsArquivo[0], s1 = statsArquivo[1];
+    const s0SoIng = s0.ing > 0 && s0.con === 0;
+    const s0SoCon = s0.con > 0 && s0.ing === 0;
+    const s1SoIng = s1.ing > 0 && s1.con === 0;
+    const s1SoCon = s1.con > 0 && s1.ing === 0;
+
+    if (s0SoIng && s1SoIng)
+      log('⚠ ATENÇÃO: ambos os arquivos contêm apenas INGRESSANTES. Verifique se enviou a planilha de concluintes por engano duplicada.', 'warn');
+    else if (s0SoCon && s1SoCon)
+      log('⚠ ATENÇÃO: ambos os arquivos contêm apenas CONCLUINTES. Verifique se enviou a planilha de ingressantes por engano duplicada.', 'warn');
+    else
+      log(`Distribuição — ${s0.label}: ${s0.ing} ing + ${s0.con} con | ${s1.label}: ${s1.ing} ing + ${s1.con} con`, 'info');
+  }
+
+  log(`✓ ${ingressantes.length} ingressantes (N92) | ${concluintes.length} concluintes (N99) | ${inelegiveis} inelegíveis`, 'ok');
 
   setProgress(80); logSep();
 
@@ -687,7 +734,7 @@ function processar() {
 
   document.getElementById('stat-ing').textContent=ingressantes.length;
   document.getElementById('stat-con').textContent=concluintes.length;
-  document.getElementById('stat-prob').textContent=totalExcluidos+totalAvisos;
+  document.getElementById('stat-prob').textContent=totalExcluidos+inelegiveis+totalAvisos;
   const sp=document.querySelector('.stat-box.warn');
   if (totalExcluidos>0){sp.classList.remove('warn');sp.classList.add('err');}
 
