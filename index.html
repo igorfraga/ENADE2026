@@ -388,7 +388,7 @@
       </div>
     </div>
     <div style="margin-top:10px;padding:8px 10px;background:var(--cinza1);border-radius:6px;border:1px solid var(--cinza2);">
-      <span style="font-family:var(--mono);font-size:10px;color:var(--cinza3);letter-spacing:.5px;">CLASSIFICAÇÃO POR % CH &nbsp;·&nbsp; ≤ 25% → N92 ingressante &nbsp;·&nbsp; ≥ 80% → N99 concluinte</span>
+      <span style="font-family:var(--mono);font-size:10px;color:var(--cinza3);letter-spacing:.5px;">CLASSIFICAÇÃO POR % CH &nbsp;·&nbsp; ≤ 25% → N92 &nbsp;·&nbsp; &gt; 25% → N99 (se &lt; 80%: potencial, incluído e sinalizado)</span>
     </div>
   </div>
 
@@ -454,7 +454,7 @@ let workbook = null, logLines = [], resultN92 = null, resultN99 = null, currentF
 
 const CO_PROJETO = '2611101', TP_ORIGEM = 'E', CO_IES = '586';
 const HEADER_N92 = 'CO_PROJETO;TP_ORIGEM;CO_IES;CO_CURSO;NU_CPF;NU_ANO_FIM_ENSINO_MEDIO;CO_TURNO_GRADUACAO;NU_PERCENTUAL_INTEGRALIZACAO;NU_ANO_INICIO_GRADUACAO;NU_SEMESTRE_INICIO_GRADUACAO';
-const HEADER_N99 = 'CO_PROJETO;TP_ORIGEM;CO_IES;CO_CURSO;NU_CPF;NU_ANO_FIM_ENSINO_MEDIO;CO_TURNO_GRADUACAO;NU_PERCENTUAL_INTEGRALIZACAO;NU_ANO_FORMATURA;NU_SEMESTRE_FORMATURA;NU_ANO_INICIO_GRADUACAO;IN_MUNICIPIO_POLO_EXTERIOR';
+const HEADER_N99 = 'CO_PROJETO;TP_ORIGEM;CO_IES;CO_CURSO;NU_CPF;NU_ANO_FIM_ENSINO_MEDIO;CO_TURNO_GRADUACAO;NU_PERCENTUAL_INTEGRALIZACAO;NU_ANO_FORMATURA;NU_SEMESTRE_FORMATURA;NU_ANO_INICIO_GRADUACAO;IN_MUNICIPIO_POLO_EXTERIOR;CO_MUNICIPIO_POLO';
 const TURNO_MAP = { 'matutino':1, 'vespertino':2, 'integral':3, 'noturno':4 };
 
 // Drop zones (2 arquivos)
@@ -535,7 +535,25 @@ function cleanCpf(raw) { return raw==null?'':(String(raw).trim().replace(/[.\-\s
 function validCpf(s) { return /^\d{11}$/.test(s); }
 function toIntStr(val) {
   if (val==null||String(val).trim()==='') return null;
-  const n=parseFloat(String(val)); return isNaN(n)?null:String(Math.round(n));
+  // Date object (SheetJS may return JS Date for date-formatted cells)
+  if (val instanceof Date) return String(val.getFullYear());
+  const s = String(val).trim();
+  // Text date formats: dd/mm/yyyy or yyyy-mm-dd
+  const mDMY = s.match(/^\d{1,2}\/\d{1,2}\/(\d{4})$/);
+  if (mDMY) return mDMY[1];
+  const mYMD = s.match(/^(\d{4})-\d{2}-\d{2}/);
+  if (mYMD) return mYMD[1];
+  // Excel date serial (number > 1000 but < 50000 is likely a serial, not a year)
+  const n = parseFloat(s);
+  if (!isNaN(n)) {
+    if (n > 1000 && n < 50000 && !s.match(/^\d{4}$/)) {
+      // Convert Excel serial to JS date
+      const d = new Date(Math.round((n - 25569) * 86400 * 1000));
+      return String(d.getUTCFullYear());
+    }
+    return String(Math.round(n));
+  }
+  return null;
 }
 function fmtPct(val) {
   if (val==null||String(val).trim()==='') return '0.0';
@@ -571,7 +589,8 @@ function processar() {
   log(`Código e-MEC: ${coCurso}  |  Data de geração: ${dataGer}`,'info');
   logSep();
 
-  let ingressantes=[],concluintes=[],inelegiveis=0,totalExcluidos=0,totalAvisos=0;
+  let ingressantes=[],concluintes=[],totalExcluidos=0,totalAvisos=0;
+  let excluidos=[],potenciais=[],inconsistentes=[];
 
   // Mapeia cabeçalhos para índices de coluna de forma dinâmica
   function mapearColunas(headerRow) {
@@ -653,39 +672,53 @@ function processar() {
       const anoIng = cols.anoIng != null ? toIntStr(r[cols.anoIng]) : null;
       const semIng = cols.semIng != null ? toIntStr(r[cols.semIng]) : null;
 
-      if (!anoEm)           { log(`⚠ AVISO ${nome} — Ano Conclusão EM ausente (????). Corrigir antes do upload.`, 'warn'); totalAvisos++; }
-      if (!anoIng||!semIng) { log(`⚠ AVISO ${nome} — Ano/Semestre de ingresso ausente.`, 'warn'); totalAvisos++; }
+      // ── Validação de campos obrigatórios ─────────────────────────────
+      const camposFaltando = [];
+      if (!anoEm)  camposFaltando.push('Ano Conclusão EM');
+      if (!anoIng) camposFaltando.push('Ano Ingresso');
+      if (!semIng) camposFaltando.push('Semestre Ingresso');
+      if (camposFaltando.length > 0) {
+        log(`EXCLUÍDO ${nome} — campos obrigatórios ausentes: ${camposFaltando.join(', ')}`, 'error');
+        excluidos.push({ nome, cpf, motivo: `Campos ausentes: ${camposFaltando.join(', ')}` });
+        totalExcluidos++; continue;
+      }
 
-      // ── Classificação por % CH (critério do edital) ──────────────
+      // ── Classificação por % CH ────────────────────────────────────
+      // Duplicata de CPF
+      if (cpfVisto[cpf]) {
+        const prev = cpfVisto[cpf];
+        log(`⚠ CPF DUPLICADO ${nome} — CPF ${cpf} já registrado como ${prev.tipo} (${prev.nome} / ${prev.arquivo}). Segundo registro ignorado.`, 'error');
+        excluidos.push({ nome, cpf, motivo: `CPF duplicado — já consta como ${prev.tipo}` });
+        totalExcluidos++; continue;
+      }
+
       if (pct <= 25) {
-        // Ingressante (N92)
-        if (cpfVisto[cpf]) {
-          log(`⚠ CPF DUPLICADO ${nome} — CPF ${cpf} já registrado como ${cpfVisto[cpf].tipo} (${cpfVisto[cpf].nome} / ${cpfVisto[cpf].arquivo}). Segundo registro ignorado.`, 'error');
-          totalExcluidos++; continue;
-        }
+        // ── Ingressante (N92) ─────────────────────────────────────
         cpfVisto[cpf] = { nome, tipo:'ingressante', arquivo: statsArquivo[arqIdx].label };
         statsArquivo[arqIdx].ing++;
         ingressantes.push([nome.toUpperCase(),
-          [CO_PROJETO,TP_ORIGEM,CO_IES,coCurso,cpf,anoEm||'????',turno,pctFmt,anoIng||'????',semIng||'?'].join(';')]);
+          [CO_PROJETO,TP_ORIGEM,CO_IES,coCurso,cpf,anoEm,turno,pctFmt,anoIng,semIng].join(';')]);
         log(`  [N92] ${nome} — ${pctFmt}% CH → ingressante`, 'info');
 
-      } else if (pct >= 80) {
-        // Concluinte (N99)
+      } else if (pct < 80) {
+        // ── Potencial concluinte (>25% e <80%) — inscrito no N99 ──
         const [anoF, semF] = (anoIng && semIng) ? calcFormatura(anoIng, semIng) : ['????','?'];
-        if (cpfVisto[cpf]) {
-          log(`⚠ CPF DUPLICADO ${nome} — CPF ${cpf} já registrado como ${cpfVisto[cpf].tipo} (${cpfVisto[cpf].nome} / ${cpfVisto[cpf].arquivo}). Segundo registro ignorado.`, 'error');
-          totalExcluidos++; continue;
-        }
+        cpfVisto[cpf] = { nome, tipo:'concluinte potencial', arquivo: statsArquivo[arqIdx].label };
+        statsArquivo[arqIdx].con++;
+        potenciais.push({ nome, cpf, pct: pctFmt });
+        concluintes.push([nome.toUpperCase(),
+          [CO_PROJETO,TP_ORIGEM,CO_IES,coCurso,cpf,anoEm,turno,pctFmt,anoF,semF,anoIng,'0',''].join(';')]);
+        log(`  [N99*] ${nome} — ${pctFmt}% CH → inscrito como concluinte potencial (abaixo de 80%, pode atingir no fim do semestre)`, 'warn');
+        totalAvisos++;
+
+      } else {
+        // ── Concluinte confirmado (≥ 80%) ─────────────────────────
+        const [anoF, semF] = (anoIng && semIng) ? calcFormatura(anoIng, semIng) : ['????','?'];
         cpfVisto[cpf] = { nome, tipo:'concluinte', arquivo: statsArquivo[arqIdx].label };
         statsArquivo[arqIdx].con++;
         concluintes.push([nome.toUpperCase(),
-          [CO_PROJETO,TP_ORIGEM,CO_IES,coCurso,cpf,anoEm||'????',turno,pctFmt,anoF,semF,anoIng||'????','0'].join(';')]);
-        log(`  [N99] ${nome} — ${pctFmt}% CH → concluinte (formatura estimada ${anoF}/${semF})`, 'info');
-
-      } else {
-        // Faixa intermediária — inelegível pelo edital
-        log(`⚠ INELEGÍVEL ${nome} — ${pctFmt}% CH (fora das faixas ≤25% ou ≥80%)`, 'warn');
-        inelegiveis++; totalAvisos++;
+          [CO_PROJETO,TP_ORIGEM,CO_IES,coCurso,cpf,anoEm,turno,pctFmt,anoF,semF,anoIng,'0',''].join(';')]);
+        log(`  [N99] ${nome} — ${pctFmt}% CH → concluinte`, 'info');
       }
     }
   }
@@ -711,7 +744,7 @@ function processar() {
       log(`Distribuição — ${s0.label}: ${s0.ing} ing + ${s0.con} con | ${s1.label}: ${s1.ing} ing + ${s1.con} con`, 'info');
   }
 
-  log(`✓ ${ingressantes.length} ingressantes (N92) | ${concluintes.length} concluintes (N99) | ${inelegiveis} inelegíveis`, 'ok');
+  log(`✓ ${ingressantes.length} ingressantes (N92) | ${concluintes.length} concluintes (N99) | ${potenciais.length} potenciais | ${excluidos.length} excluídos`, 'ok');
 
   setProgress(80); logSep();
 
@@ -734,9 +767,70 @@ function processar() {
     log(`✓ Arquivo N99 pronto: ${fname}`,'ok');
   }
 
+  // ── Relatório de pendências (terceiro arquivo) ────────────────────
+  {
+    const sep  = '='.repeat(70);
+    const sep2 = '-'.repeat(70);
+    const linhas = [];
+    const curso  = coCurso;
+    const hoje   = dataGer.replace(/(\d{2})(\d{2})(\d{4})/,'$1/$2/$3');
+
+    linhas.push(sep);
+    linhas.push(`ENADE 2026 — RELATÓRIO DE PENDÊNCIAS`);
+    linhas.push(`Curso (e-MEC): ${curso}   Data: ${hoje}`);
+    linhas.push(sep);
+
+    // Seção 1 — Não inseridos
+    linhas.push('');
+    linhas.push('1. ALUNOS NÃO INSERIDOS NOS ARQUIVOS DE INSCRIÇÃO');
+    linhas.push(sep2);
+    if (excluidos.length === 0) {
+      linhas.push('   Nenhum aluno excluído.');
+    } else {
+      excluidos.forEach((a,i) => linhas.push(`   ${String(i+1).padStart(3,'0')}. ${a.nome.padEnd(50,' ')} CPF: ${a.cpf}   Motivo: ${a.motivo}`));
+    }
+
+    // Seção 2 — Potenciais (inscritos mas abaixo de 80%)
+    linhas.push('');
+    linhas.push('2. ALUNOS INSCRITOS COM % CH INFERIOR A 80% (POTENCIALMENTE ELEGÍVEIS)');
+    linhas.push('   Atenção: estes alunos foram incluídos no N99. Verificar se atingirão');
+    linhas.push('   80% de integralização até o final do semestre.');
+    linhas.push(sep2);
+    if (potenciais.length === 0) {
+      linhas.push('   Nenhum aluno nesta condição.');
+    } else {
+      potenciais.forEach((a,i) => linhas.push(`   ${String(i+1).padStart(3,'0')}. ${a.nome.padEnd(50,' ')} CPF: ${a.cpf}   % CH atual: ${a.pct}%`));
+    }
+
+    // Seção 3 — Excluídos por campos obrigatórios ausentes
+    const excCampos = excluidos.filter(a => a.motivo.startsWith('Campos ausentes'));
+    linhas.push('');
+    linhas.push('3. ALUNOS NÃO INSCRITOS POR DADOS OBRIGATÓRIOS AUSENTES (CORRIGIR NA PLANILHA)');
+    linhas.push('   Estes alunos NÃO constam nos arquivos N92/N99. Corrija a planilha e reprocesse.');
+    linhas.push(sep2);
+    if (excCampos.length === 0) {
+      linhas.push('   Nenhum aluno nesta condição.');
+    } else {
+      excCampos.forEach((a,i) => linhas.push(`   ${String(i+1).padStart(3,'0')}. ${a.nome.padEnd(50,' ')} CPF: ${a.cpf}   ${a.motivo}`));
+    }
+
+    linhas.push('');
+    linhas.push(sep);
+    linhas.push(`Total não inseridos: ${excluidos.length} (sendo ${excCampos.length} por dados ausentes)   Potenciais (inscritos, atenção): ${potenciais.length}`);
+    linhas.push(sep);
+
+    const fname   = `ENADE2611101_REL_BR_${dataGer}_${coCurso}_E001.TXT`;
+    const conteudo = linhas.join('\n');
+    const btn = document.createElement('button'); btn.className='btn btn-dl';
+    btn.style.background='#5a4fcf';
+    btn.textContent=`⬇  Baixar ${fname}`;
+    btn.onclick=()=>baixarTxt(fname,conteudo); dlArea.appendChild(btn);
+    log(`✓ Relatório de pendências pronto: ${fname}`,'ok');
+  }
+
   document.getElementById('stat-ing').textContent=ingressantes.length;
   document.getElementById('stat-con').textContent=concluintes.length;
-  document.getElementById('stat-prob').textContent=totalExcluidos+inelegiveis+totalAvisos;
+  document.getElementById('stat-prob').textContent=totalExcluidos+potenciais.length;
   const sp=document.querySelector('.stat-box.warn');
   if (totalExcluidos>0){sp.classList.remove('warn');sp.classList.add('err');}
 
@@ -745,6 +839,14 @@ function processar() {
   if (totalAvisos>0)    log(`⚠ ${totalAvisos} campo(s) com ???? — corrigir na planilha antes do upload.`,'warn');
   if (!totalExcluidos&&!totalAvisos) log('✓ Nenhuma inconsistência encontrada. Arquivos prontos para upload.','ok');
   setTimeout(()=>{ document.getElementById('progress-wrap').style.display='none'; },800);
+}
+
+function baixarTxt(fname, conteudo) {
+  const blob=new Blob([conteudo],{type:'text/plain;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=fname; a.click();
+  URL.revokeObjectURL(url);
+  log(`Download iniciado: ${fname}`,'ok');
 }
 
 async function baixarZip(fname, conteudo) {
